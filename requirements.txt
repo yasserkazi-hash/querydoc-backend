@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+pdfplumber
+python-docx
+python-multipart
+openai
+langchain-text-splitters
+chromadb
+python-dotenv
+pydantic
+python-jose[cryptography]
+requests
