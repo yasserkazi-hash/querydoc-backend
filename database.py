@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 
-DB_PATH = "querydoc.db"
+DB_PATH = "/app/data/querydoc.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)

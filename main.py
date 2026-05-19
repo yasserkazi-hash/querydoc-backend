@@ -26,7 +26,7 @@ app.add_middleware(
 )
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-chroma_client = chromadb.PersistentClient(path="./chroma_data")
+chroma_client = chromadb.PersistentClient(path="/app/data/chroma_data")
 collection = chroma_client.get_or_create_collection(name="documents")
 
 MAX_FILE_SIZE_MB = 5
