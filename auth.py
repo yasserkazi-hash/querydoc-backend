@@ -1,7 +1,8 @@
 import os
+import logging
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt
+from jose import jwt, JWTError
 import requests
 from dotenv import load_dotenv
 
@@ -11,13 +12,19 @@ CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
 CLERK_ISSUER = os.getenv("CLERK_JWT_ISSUER")
 
 security = HTTPBearer()
+logger = logging.getLogger("uvicorn")
+
 _jwks_cache = {}
 
 def get_jwks():
     if not _jwks_cache:
-        response = requests.get(CLERK_JWKS_URL)
-        response.raise_for_status()
-        _jwks_cache.update(response.json())
+        try:
+            resp = requests.get(CLERK_JWKS_URL, timeout=10)
+            resp.raise_for_status()
+            _jwks_cache.update(resp.json())
+        except requests.RequestException as e:
+            logger.error(f"Failed to fetch Clerk JWKS: {e}")
+            raise HTTPException(status_code=500, detail="Unable to verify authentication at this time.")
     return _jwks_cache
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
@@ -29,15 +36,10 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(
         key = next((jwk for jwk in jwks["keys"] if jwk["kid"] == kid), None)
         if not key:
             raise HTTPException(status_code=401, detail="Invalid token: kid not found")
-        payload = jwt.decode(
-            token,
-            key,
-            algorithms=["RS256"],
-            issuer=CLERK_ISSUER,
-        )
+        payload = jwt.decode(token, key, algorithms=["RS256"], issuer=CLERK_ISSUER)
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token: missing sub")
         return user_id
-    except jwt.JWTError as e:
+    except JWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
