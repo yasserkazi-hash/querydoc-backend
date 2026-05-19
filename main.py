@@ -11,9 +11,17 @@ from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
 import chromadb
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+# We'll use a Pydantic model to validate the incoming JSON
+class AskRequest(BaseModel):
+    question: str
+    doc_id: str | None = None   # optional; if omitted we search all documents
 
 load_dotenv()
-init_db
+init_db()
 
 app = FastAPI()
 
@@ -24,6 +32,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred. Check Railway logs."},
+        headers={
+            "Access-Control-Allow-Origin": "https://querydoc-frontend.vercel.app",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 chroma_client = chromadb.PersistentClient(path="/app/data/chroma_data")
@@ -109,12 +129,7 @@ async def embed_document(file: UploadFile = File(...), user_id: str = Depends(ge
         "doc_id": doc_id,
         "filename": file.filename
     }
-from pydantic import BaseModel
 
-# We'll use a Pydantic model to validate the incoming JSON
-class AskRequest(BaseModel):
-    question: str
-    doc_id: str | None = None   # optional; if omitted we search all documents
 
 @app.post("/ask")
 async def ask_question(request: AskRequest, user_id: str = Depends(get_current_user)):
