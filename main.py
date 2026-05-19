@@ -1,6 +1,5 @@
 from database import init_db, add_document, get_user_documents, delete_document
 from auth import get_current_user
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
 from docx import Document
@@ -149,9 +148,14 @@ async def ask_question(request: AskRequest, user_id: str = Depends(get_current_u
     if request.doc_id:
         conditions.append({"doc_id": request.doc_id})
     where_filter = {"$and": conditions} if len(conditions) > 1 else conditions[0]
+    existing_ids = collection.get(where=where_filter)["ids"]
+    n_results = min(8, len(existing_ids))
+    if n_results == 0:
+        raise HTTPException(status_code=404, detail="No relevant chunks found. Upload a document first.")
+
     results = collection.query(
         query_embeddings=[q_embedding],
-        n_results=8,
+        n_results=n_results,
         where=where_filter,
         include=["documents", "metadatas", "distances"]
     )
@@ -193,3 +197,23 @@ Answer:"""
             for chunk, meta in zip(retrieved_chunks, results["metadatas"][0])
         ]
     }
+
+
+@app.get("/documents")
+async def list_documents(user_id: str = Depends(get_current_user)):
+    return get_user_documents(user_id)
+
+
+@app.delete("/documents/{doc_id}")
+async def remove_document(doc_id: str, user_id: str = Depends(get_current_user)):
+    docs = get_user_documents(user_id)
+    if not any(d["id"] == doc_id for d in docs):
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Remove all chunks from ChromaDB
+    chunk_ids = collection.get(where={"doc_id": doc_id})["ids"]
+    if chunk_ids:
+        collection.delete(ids=chunk_ids)
+
+    delete_document(doc_id, user_id)
+    return {"status": "deleted", "doc_id": doc_id}
